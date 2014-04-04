@@ -28,8 +28,10 @@ class TcpConnection {
 	private volatile long lastWriteTime, lastReadTime;
 	private int currentObjectLength;
 	private final Object writeLock = new Object();
+    private final int maxWriteObjectSize;
 
-	public TcpConnection (Serialization serialization, int writeBufferSize, int objectBufferSize) {
+	public TcpConnection (Serialization serialization, int writeBufferSize, int objectBufferSize, int maxWriteObjectSize) {
+        this.maxWriteObjectSize = maxWriteObjectSize;
 		this.serialization = serialization;
 		writeBuffer = ByteBuffer.allocate(writeBufferSize);
 		readBuffer = ByteBuffer.allocate(objectBufferSize);
@@ -181,10 +183,20 @@ class TcpConnection {
 	public int send (Connection connection, Object object) throws IOException {
 		SocketChannel socketChannel = this.socketChannel;
 		if (socketChannel == null) throw new SocketException("Connection is closed.");
+        int lengthLength = serialization.getLengthLength();
 		synchronized (writeLock) {
+
+            //wait while buffer has enough free space.
+            while (writeBuffer.capacity() < writeBuffer.position() + lengthLength + maxWriteObjectSize) {
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    break;
+                }
+                writeToSocket();
+            }
 			// Leave room for length.
 			int start = writeBuffer.position();
-			int lengthLength = serialization.getLengthLength();
 			writeBuffer.position(writeBuffer.position() + lengthLength);
 
 			// Write data.

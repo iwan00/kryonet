@@ -55,7 +55,7 @@ public class Client extends Connection implements EndPoint {
 
 	/** Creates a Client with a write buffer size of 8192 and an object buffer size of 2048. */
 	public Client () {
-		this(8192, 2048);
+		this(8192, 2048, 4096);
 	}
 
 	/** @param writeBufferSize One buffer of this size is allocated. Objects are serialized to the write buffer where the bytes are
@@ -73,10 +73,36 @@ public class Client extends Connection implements EndPoint {
 	 *           <p>
 	 *           The object buffers should be sized at least as large as the largest object that will be sent or received. */
 	public Client (int writeBufferSize, int objectBufferSize) {
-		this(writeBufferSize, objectBufferSize, new KryoSerialization());
+		this(writeBufferSize, objectBufferSize, writeBufferSize / 2, new KryoSerialization());
 	}
 
-	public Client (int writeBufferSize, int objectBufferSize, Serialization serialization) {
+
+    /** @param writeBufferSize One buffer of this size is allocated. Objects are serialized to the write buffer where the bytes are
+     *           queued until they can be written to the TCP socket.
+     *           <p>
+     *           Normally the socket is writable and the bytes are written immediately. If the socket cannot be written to and
+     *           enough serialized objects are queued to overflow the buffer, then the connection will be closed.
+     *           <p>
+     *           The write buffer should be sized at least as large as the largest object that will be sent, plus some head room to
+     *           allow for some serialized objects to be queued in case the buffer is temporarily not writable. The amount of head
+     *           room needed is dependent upon the size of objects being sent and how often they are sent.
+     * @param objectBufferSize One (using only TCP) or three (using both TCP and UDP) buffers of this size are allocated. These
+     *           buffers are used to hold the bytes for a single object graph until it can be sent over the network or
+     *           deserialized.
+     *           <p>
+     *           The object buffers should be sized at least as large as the largest object that will be sent or received.
+     * @param maxWriteObjectSize Next message would be written into the writeBuffer only when it will have enough free space
+     *            (more than this size + some space for size prefix (4 bytes usually)).
+     *           */
+    public Client (int writeBufferSize, int objectBufferSize, int maxWriteObjectSize) {
+        this(writeBufferSize, objectBufferSize, maxWriteObjectSize, new KryoSerialization());
+    }
+
+    public Client (int writeBufferSize, int objectBufferSize, Serialization serialization) {
+        this(writeBufferSize, objectBufferSize, writeBufferSize / 2, serialization);
+    }
+
+    public Client (int writeBufferSize, int objectBufferSize, int maxWriteObjectSize, Serialization serialization) {
 		super();
 		endPoint = this;
 
@@ -84,7 +110,7 @@ public class Client extends Connection implements EndPoint {
 
 		this.discoveryHandler = ClientDiscoveryHandler.DEFAULT;
 
-		initialize(serialization, writeBufferSize, objectBufferSize);
+		initialize(serialization, writeBufferSize, objectBufferSize, maxWriteObjectSize);
 
 		try {
 			selector = Selector.open();

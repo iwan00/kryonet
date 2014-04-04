@@ -35,8 +35,8 @@ public class Connection {
 	protected Connection () {
 	}
 
-	void initialize (Serialization serialization, int writeBufferSize, int objectBufferSize) {
-		tcp = new TcpConnection(serialization, writeBufferSize, objectBufferSize);
+	void initialize (Serialization serialization, int writeBufferSize, int objectBufferSize, int maxWriteObjectSize) {
+		tcp = new TcpConnection(serialization, writeBufferSize, objectBufferSize, maxWriteObjectSize);
 	}
 
 	/** Returns the server assigned ID. Will return -1 if this connection has never been connected or the last assigned ID if this

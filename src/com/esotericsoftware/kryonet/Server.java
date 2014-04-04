@@ -26,7 +26,7 @@ import static com.esotericsoftware.minlog.Log.*;
  * @author Nathan Sweet <misc@n4te.com> */
 public class Server implements EndPoint {
 	private final Serialization serialization;
-	private final int writeBufferSize, objectBufferSize;
+	private final int writeBufferSize, objectBufferSize, maxWriteObjectSize;
 	private final Selector selector;
 	private int emptySelects;
 	private ServerSocketChannel serverChannel;
@@ -70,7 +70,7 @@ public class Server implements EndPoint {
 
 	/** Creates a Server with a write buffer size of 16384 and an object buffer size of 2048. */
 	public Server () {
-		this(16384, 2048);
+		this(16384, 2048, 8192);
 	}
 
 	/** @param writeBufferSize One buffer of this size is allocated for each connected client. Objects are serialized to the write
@@ -87,13 +87,39 @@ public class Server implements EndPoint {
 	 *           deserialized.
 	 *           <p>
 	 *           The object buffers should be sized at least as large as the largest object that will be sent or received. */
-	public Server (int writeBufferSize, int objectBufferSize) {
-		this(writeBufferSize, objectBufferSize, new KryoSerialization());
-	}
+    public Server (int writeBufferSize, int objectBufferSize) {
+        this(writeBufferSize, objectBufferSize, writeBufferSize/2, new KryoSerialization());
+    }
 
-	public Server (int writeBufferSize, int objectBufferSize, Serialization serialization) {
+    /** @param writeBufferSize One buffer of this size is allocated for each connected client. Objects are serialized to the write
+     *           buffer where the bytes are queued until they can be written to the TCP socket.
+     *           <p>
+     *           Normally the socket is writable and the bytes are written immediately. If the socket cannot be written to and
+     *           enough serialized objects are queued to overflow the buffer, then the connection will be closed.
+     *           <p>
+     *           The write buffer should be sized at least as large as the largest object that will be sent, plus some head room to
+     *           allow for some serialized objects to be queued in case the buffer is temporarily not writable. The amount of head
+     *           room needed is dependent upon the size of objects being sent and how often they are sent.
+     * @param objectBufferSize One (using only TCP) or three (using both TCP and UDP) buffers of this size are allocated. These
+     *           buffers are used to hold the bytes for a single object graph until it can be sent over the network or
+     *           deserialized.
+     *           <p>
+     *           The object buffers should be sized at least as large as the largest object that will be sent or received.
+     * @param maxWriteObjectSize Next message would be written into the writeBuffer only when it will have enough free space
+     *            (more than this size + some space for size prefix (4 bytes usually)).
+     *           */
+    public Server (int writeBufferSize, int objectBufferSize, int maxWriteObjectSize) {
+        this(writeBufferSize, objectBufferSize, maxWriteObjectSize, new KryoSerialization());
+    }
+
+    public Server (int writeBufferSize, int objectBufferSize, Serialization serialization) {
+        this(writeBufferSize, objectBufferSize, writeBufferSize/2, serialization);
+    }
+
+	public Server (int writeBufferSize, int objectBufferSize, int maxWriteObjectSize, Serialization serialization) {
 		this.writeBufferSize = writeBufferSize;
-		this.objectBufferSize = objectBufferSize;
+        this.objectBufferSize = objectBufferSize;
+        this.maxWriteObjectSize = maxWriteObjectSize;
 
 		this.serialization = serialization;
 
@@ -391,7 +417,7 @@ public class Server implements EndPoint {
 
 	private void acceptOperation (SocketChannel socketChannel) {
 		Connection connection = newConnection();
-		connection.initialize(serialization, writeBufferSize, objectBufferSize);
+		connection.initialize(serialization, writeBufferSize, objectBufferSize, maxWriteObjectSize);
 		connection.endPoint = this;
 		UdpConnection udp = this.udp;
 		if (udp != null) connection.udp = udp;

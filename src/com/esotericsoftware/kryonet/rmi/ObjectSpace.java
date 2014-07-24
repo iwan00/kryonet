@@ -44,9 +44,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * not final (note primitives are final) then an extra byte is written for that parameter.
  * @author Nathan Sweet <misc@n4te.com> */
 public class ObjectSpace {
-	static private final byte kReturnValMask  = (byte)0x80; // 1000 0000
-    static private final byte kReturnExMask   = (byte)0x40; // 0100 0000
-    static private final byte kMaxResponseNum = (byte)0x20; // 0100 0000
+	static private final short kReturnValMask  = (short)0x8000; // 1000 0000
+    static private final short kReturnExMask   = (short)0x4000; // 0100 0000
+    static private final short kMaxResponseNum = (short)0x2000; // 0100 0000
 
 	static private final Object instancesLock = new Object();
 	static ObjectSpace[] instances = new ObjectSpace[0];
@@ -205,7 +205,7 @@ public class ObjectSpace {
 				+ "(" + argString + ")");
 		}
 
-		byte responseID = invokeMethod.responseID;
+        short responseID = invokeMethod.responseID;
 		boolean transmitReturnVal = (responseID & kReturnValMask) == kReturnValMask;
 		boolean transmitExceptions = (responseID & kReturnExMask) == kReturnExMask;
 
@@ -281,14 +281,14 @@ public class ObjectSpace {
 		private boolean transmitReturnValue = true;
 		private boolean transmitExceptions = true;
 		private boolean remoteToString;
-		private Byte lastResponseID;
-		private byte nextResponseNum = 1;
+		private Short lastResponseID;
+		private short nextResponseNum = 1;
         private int currentResponseNumCycleReceivedAnswers = kMaxResponseNum - 1;
 		private Listener responseListener;
 
 		final ReentrantLock lock = new ReentrantLock();
 		final Condition responseCondition = lock.newCondition();
-		final ConcurrentHashMap<Byte, InvokeMethodResult> responseTable = new ConcurrentHashMap();
+		final ConcurrentHashMap<Short, InvokeMethodResult> responseTable = new ConcurrentHashMap();
 
 		public RemoteInvocationHandler (Connection connection, final int objectID) {
 			super();
@@ -367,7 +367,7 @@ public class ObjectSpace {
 			// and no return values or exceptions are wanted back.
 			boolean needsResponse = transmitReturnValue || transmitExceptions || !nonBlocking;
 			if (needsResponse) {
-				byte responseID;
+                short responseID;
 				synchronized (this) {
 					// Increment the response counter and put it into the first six bits of the responseID byte
 					responseID = nextResponseNum++;
@@ -425,7 +425,7 @@ public class ObjectSpace {
 			}
 		}
 
-		private Object waitForResponse (byte responseID) {
+		private Object waitForResponse (short responseID) {
 			if (connection.getEndPoint().getUpdateThread() == Thread.currentThread())
 				throw new IllegalStateException("Cannot wait for an RMI response on the connection's update thread.");
 
@@ -468,7 +468,7 @@ public class ObjectSpace {
 		// The top two bytes of the ID indicate if the remote invocation should respond with return values and exceptions,
 		// respectively. The rest is a six bit counter. This means up to 63 responses can be stored before undefined behavior
 		// occurs due to possible duplicate IDs.
-		public byte responseID;
+		public short responseID;
 
 		public void write (Kryo kryo, Output output) {
 			output.writeInt(objectID, true);
@@ -494,7 +494,7 @@ public class ObjectSpace {
 					kryo.writeClassAndObject(output, args[i]);
 			}
 
-			output.writeByte(responseID);
+			output.writeShort(responseID);
 		}
 
 		public void read (Kryo kryo, Input input) {
@@ -520,14 +520,14 @@ public class ObjectSpace {
 					args[i] = kryo.readClassAndObject(input);
 			}
 
-			responseID = input.readByte();
+			responseID = input.readShort();
 		}
 	}
 
 	/** Internal message to return the result of a remotely invoked method. */
 	static public class InvokeMethodResult implements FrameworkMessage {
 		public int objectID;
-		public byte responseID;
+		public short responseID;
 		public Object result;
 	}
 

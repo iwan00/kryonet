@@ -44,8 +44,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * not final (note primitives are final) then an extra byte is written for that parameter.
  * @author Nathan Sweet <misc@n4te.com> */
 public class ObjectSpace {
-	static private final byte kReturnValMask = (byte)0x80; // 1000 0000
-	static private final byte kReturnExMask = (byte)0x40; // 0100 0000
+	static private final byte kReturnValMask  = (byte)0x80; // 1000 0000
+    static private final byte kReturnExMask   = (byte)0x40; // 0100 0000
+    static private final byte kMaxResponseNum = (byte)0x20; // 0100 0000
 
 	static private final Object instancesLock = new Object();
 	static ObjectSpace[] instances = new ObjectSpace[0];
@@ -282,6 +283,7 @@ public class ObjectSpace {
 		private boolean remoteToString;
 		private Byte lastResponseID;
 		private byte nextResponseNum = 1;
+        private int currentResponseNumCycleReceivedAnswers = kMaxResponseNum - 1;
 		private Listener responseListener;
 
 		final ReentrantLock lock = new ReentrantLock();
@@ -369,7 +371,15 @@ public class ObjectSpace {
 				synchronized (this) {
 					// Increment the response counter and put it into the first six bits of the responseID byte
 					responseID = nextResponseNum++;
-					if (nextResponseNum == 64) nextResponseNum = 1; // Keep number under 2^6, avoid 0 (see else statement below)
+					if (nextResponseNum == kMaxResponseNum) {
+                        nextResponseNum = 1; // Keep number under 2^6, avoid 0 (see else statement below)
+                    }
+                    if (responseID == 1) {
+                        while (currentResponseNumCycleReceivedAnswers < kMaxResponseNum - 1) {
+                            Thread.sleep(10);
+                        }
+                        currentResponseNumCycleReceivedAnswers = 0;
+                    }
 				}
 				// Pack return value and exception info into the top two bits
 				if (transmitReturnValue) responseID |= kReturnValMask;
@@ -427,6 +437,7 @@ public class ObjectSpace {
 					InvokeMethodResult invokeMethodResult = responseTable.get(responseID);
 					responseTable.remove(responseID);
 					lastResponseID = null;
+                    currentResponseNumCycleReceivedAnswers++;
 					return invokeMethodResult.result;
 				} else {
 					if (remaining <= 0) throw new TimeoutException("Response timed out.");
